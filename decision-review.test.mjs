@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createReview,answer,compare,confirm,reviewState} from './decision-review.mjs';
+const fresh=()=>createReview(['Alex','Sam'],['Updates']);
+const complete=()=>answer(answer(fresh(),'Alex','Updates','Monthly'),'Sam','Updates','Monthly');
+test('independent perspectives remain visible when they differ',()=>{const r=answer(answer(fresh(),'Alex','Updates','Monthly'),'Sam','Updates','Weekly');assert.equal(compare(r)[0].status,'different');assert.deepEqual(compare(r)[0].responses.map(x=>x.value),['Monthly','Weekly']);});
+test('a missing answer is distinct from an explicit undecided answer',()=>{let r=answer(fresh(),'Alex','Updates','Undecided');assert.equal(compare(r)[0].status,'incomplete');r=answer(r,'Sam','Updates','Monthly');assert.equal(compare(r)[0].status,'open');});
+test('confirmation records review, not agreement or legal consent',()=>{let r=answer(answer(fresh(),'Alex','Updates','Monthly'),'Sam','Updates','Weekly');r=confirm(confirm(r,'Alex',r.revision),'Sam',r.revision);assert.equal(reviewState(r).reviewedByAll,true);assert.equal(compare(r)[0].status,'different');});
+test('any changed answer invalidates all earlier confirmations without mutating the old review',()=>{const old=confirm(confirm(complete(),'Alex',2),'Sam',2);const next=answer(old,'Alex','Updates','Weekly');assert.equal(reviewState(old).reviewedByAll,true);assert.equal(reviewState(next).reviewedByAll,false);assert.equal(next.revision,3);assert.deepEqual(next.confirmations,{});});
+test('stale review tabs cannot confirm a newer revision',()=>assert.throws(()=>confirm(complete(),'Alex',1),/changed/));
+test('unchanged saves preserve current confirmations',()=>{let r=confirm(complete(),'Alex',2);assert.equal(answer(r,'Alex','Updates','Monthly'),r);});
+test('incomplete responses and unknown identities cannot be confirmed',()=>{assert.throws(()=>confirm(fresh(),'Alex',0),/Complete/);assert.throws(()=>confirm(complete(),'Other',2),/Unknown/);assert.throws(()=>answer(fresh(),'Other','Updates','Monthly'),/Unknown/);});
+test('invalid definitions are rejected',()=>{assert.throws(()=>createReview(['Alex','Alex'],['Updates']));assert.throws(()=>createReview(['Alex'],[]));});
